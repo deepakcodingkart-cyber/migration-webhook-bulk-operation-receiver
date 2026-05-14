@@ -1,0 +1,20 @@
+{
+  "name": "bulk-migration-webhook-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda handler for Shopify bulk_operations/finish webhook",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1012.0",
+    "@sentry/aws-serverless": "^10.51.0",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.3.1",
+    "nodemon": "^3.1.14",
+    "pg": "^8.20.0",
+    "pino": "^9.5.0"
+  }
+}
