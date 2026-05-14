@@ -1,3 +1,5 @@
+import type { Phase } from "../types/index.ts";
+
 // ─────────────────────────────────────────────────────────────
 // Phase detection — migration.status → phase name
 // ─────────────────────────────────────────────────────────────
@@ -14,7 +16,7 @@
 //   }
 // }
 
-export function detectPhase(status) {
+export function detectPhase(status: string | null | undefined): Phase | null {
 console.log(
     "🚀 ~ file: helper.mjs ~ line 10 ~ detectPhase ~ status", status)
   if (!status) return null;

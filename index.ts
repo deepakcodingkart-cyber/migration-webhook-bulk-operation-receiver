@@ -1,22 +1,23 @@
 import "dotenv/config";
-import { logger } from "./logger.mjs";
-import { getDbPool } from "./config/db.mjs";
-import { Repository } from "./config/repository.mjs";
+import { logger } from "./logger.ts";
+import { getPrismaClient } from "./config/db.ts";
+import { Repository } from "./config/repository.ts";
 import {
   calculateDuration,
   getHeader,
   verifyShopifyWebhook,
-} from "./utils/webhook.mjs";
-import { statusCodes } from "./utils/constant.mjs";
-import { initSentry, sendSentryError } from "./utils/sentry.mjs";
-import { processWebhook } from "./services/processWebhook.mjs";
+} from "./utils/webhook.ts";
+import { statusCodes } from "./utils/constant.ts";
+import { initSentry, sendSentryError } from "./utils/sentry.ts";
+import { processWebhook } from "./services/processWebhook.ts";
+import type { LambdaEvent } from "./types/index.ts";
 
 // ─────────────────────────────────────────────────────────────
 // Singletons — reused across Lambda invocations
 // ─────────────────────────────────────────────────────────────
 initSentry();
-const db = getDbPool();
-const repo = new Repository(db);
+const prisma = getPrismaClient();
+const repo = new Repository(prisma);
 
 /**
  * Shopify Webhook Lambda — bulk_operations/finish
@@ -30,22 +31,22 @@ const repo = new Repository(db);
  * Any error after the ACK is logged but does NOT trigger a Shopify retry.
  */
 export const handler = awslambda.streamifyResponse(
-  async (event, responseStream, _context) => {
+  async (event: LambdaEvent, responseStream, _context) => {
     logger.setLambdaContext(_context);
 
-    const shop         = getHeader(event.headers, "x-shopify-shop-domain");
+    const shop = getHeader(event.headers, "x-shopify-shop-domain");
     const webhookTopic = getHeader(event.headers, "x-shopify-topic");
-    const lambdaName   = process.env.AWS_LAMBDA_FUNCTION_NAME || "local-dev";
-    const awsRegion    = process.env.AWS_REGION || "local";
-    const lambdaUrl    = `https://${lambdaName}.lambda-url.${awsRegion}.aws/webhook/${webhookTopic}`;
+    const lambdaName = process.env.AWS_LAMBDA_FUNCTION_NAME || "local-dev";
+    const awsRegion = process.env.AWS_REGION || "local";
+    const lambdaUrl = `https://${lambdaName}.lambda-url.${awsRegion}.aws/webhook/${webhookTopic}`;
 
-    const startTime    = Date.now();
+    const startTime = Date.now();
 
     const log = logger.child({
       shop,
       url: lambdaUrl,
       method: "webhook",
-      route:  `/webhook/${webhookTopic}`,
+      route: `/webhook/${webhookTopic}`,
       lambdaName,
     });
 
@@ -54,11 +55,11 @@ export const handler = awslambda.streamifyResponse(
     // if (!isValid) {
     //   log.error(
     //     {
-            // service: lambdaName,
-            // module: "handler",
-            // step: "HMAC_VALIDATION",
-            // statusCode: statusCodes.UNAUTHORIZED
-        // },
+    // service: lambdaName,
+    // module: "handler",
+    // step: "HMAC_VALIDATION",
+    // statusCode: statusCodes.UNAUTHORIZED
+    // },
     //     "❌ HMAC validation failed for incoming Shopify webhook",
     //   );
     //   responseStream.setContentType("application/json");
@@ -89,8 +90,8 @@ export const handler = awslambda.streamifyResponse(
         {
           service: lambdaName,
           module: "handler",
-          step:       "WEBHOOK_PROCESSED",
-          duration:   calculateDuration(startTime),
+          step: "WEBHOOK_PROCESSED",
+          duration: calculateDuration(startTime),
           statusCode: statusCodes.OK,
         },
         "✅ Webhook processing completed successfully",
@@ -100,10 +101,10 @@ export const handler = awslambda.streamifyResponse(
         {
           service: lambdaName,
           module: "handler",
-          step:       "WEBHOOK_FAILED",
-          duration:   calculateDuration(startTime),
+          step: "WEBHOOK_FAILED",
+          duration: calculateDuration(startTime),
           statusCode: statusCodes.SERVER_ERROR,
-          err:        error,
+          err: error,
         },
         "❌ Error during webhook processing",
       );

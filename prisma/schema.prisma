@@ -1,0 +1,589 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ActivityEvent {
+  id         Int      @id @default(autoincrement())
+  shopId     String
+  entityType String
+  entityId   String?
+  eventType  String
+  source     String
+  actorId    String?
+  actorType  String?
+  status     String   @default("Success")
+  metaData   Json?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  Shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, entityId, entityType])
+  @@index([shopId, eventType])
+  @@index([shopId, occurredAt(sort: Desc)])
+}
+
+model AuditLog {
+  id            BigInt   @id @default(autoincrement())
+  action        String
+  entityType    String
+  entityId      String
+  performedBy   String?
+  performedById String?
+  shopId        String?
+  oldValue      Json?
+  newValue      Json?
+  reason        String?
+  source        String?
+  createdAt     DateTime @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([shopId])
+}
+
+model BillingCycle {
+  id                   Int           @id @default(autoincrement())
+  shopId               String
+  jobId                Int
+  cycleIndex           Int
+  contractId           String
+  status               BillingStatus
+  billingAttemptId     String?
+  lastBillingAttemptId String?
+  lastOrderId          String?
+  billingExpectedAt    DateTime
+  errorMessage         String?
+  lastErrorCode        String?
+  lastErrorMessage     String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime
+  Job                  Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  Shop                 Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, jobId, cycleIndex, contractId])
+}
+
+model BillingWebhookEvent {
+  id               Int      @id @default(autoincrement())
+  shopId           String
+  eventId          String?
+  topic            String?
+  contractId       String?
+  billingAttemptId String?
+  webhookId        String   @unique
+  payload          Json
+  requestId        String?
+  isProcessed      Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  Shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model BulkSubscriptionUpdateAttempts {
+  id                              Int                             @id @default(autoincrement())
+  operationId                     Int
+  attemptName                     String
+  attemptType                     String                          @default("filterSelection")
+  filters                         Json?
+  actions                         Json?
+  fileUrls                        Json?
+  preparingStatus                 PreparingStatus                 @default(PENDING)
+  validationStatus                ValidationStatus                @default(PENDING)
+  verificationStatus              VerificationStatus              @default(PENDING)
+  processingStatus                ProcessingStatus                @default(PENDING)
+  rollbackStatus                  RollbackStatus                  @default(PENDING)
+  totalSubscriptions              Int?                            @default(0)
+  successSubscriptions            Int?                            @default(0)
+  failedSubscriptions             Int?                            @default(0)
+  completedSubscriptions          Int?                            @default(0)
+  totalBatches                    Int?                            @default(0)
+  batchProcessed                  Int                             @default(0)
+  lastSeenId                      Int?                            @default(0)
+  batchNumber                     Int?                            @default(0)
+  additionalData                  Json?
+  startedAt                       DateTime                        @default(now())
+  completedAt                     DateTime?
+  BulkSubscriptionUpdateOperation BulkSubscriptionUpdateOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateBatches   BulkSubscriptionUpdateBatches[]
+  BulkSubscriptionUpdateCsvData   BulkSubscriptionUpdateCsvData[]
+  BulkSubscriptionUpdateLog       BulkSubscriptionUpdateLog[]
+}
+
+model BulkSubscriptionUpdateBatches {
+  id                              Int                             @id @default(autoincrement())
+  operationId                     Int
+  attemptId                       Int
+  fileUrls                        Json?
+  batchNumber                     Int
+  batchIds                        BigInt[]
+  prepareStatus                   BulkOperationBatchStatus        @default(PENDING)
+  processStatus                   BulkOperationBatchStatus        @default(PENDING)
+  BulkSubscriptionUpdateAttempts  BulkSubscriptionUpdateAttempts  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateOperation BulkSubscriptionUpdateOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateLog       BulkSubscriptionUpdateLog[]
+
+  @@index([operationId])
+}
+
+model BulkSubscriptionUpdateCsvData {
+  id                              Int                             @id @default(autoincrement())
+  shopId                          String
+  operationId                     Int
+  bulkOperationId                 String
+  attemptId                       Int
+  subscriptionId                  String
+  data                            Json?
+  status                          String
+  message                         String
+  BulkSubscriptionUpdateAttempts  BulkSubscriptionUpdateAttempts  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateOperation BulkSubscriptionUpdateOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  Shop                            Shop                            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model BulkSubscriptionUpdateLog {
+  id                              Int                             @id @default(autoincrement())
+  operationId                     Int
+  attemptId                       Int
+  batchId                         Int
+  subscriptionId                  String
+  status                          String
+  message                         String
+  subscriptionContractId          BigInt?
+  BulkSubscriptionUpdateAttempts  BulkSubscriptionUpdateAttempts  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateBatches   BulkSubscriptionUpdateBatches   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  BulkSubscriptionUpdateOperation BulkSubscriptionUpdateOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  SubscriptionContract            SubscriptionContract?           @relation(fields: [subscriptionContractId], references: [id])
+
+  @@index([operationId])
+  @@index([status])
+}
+
+model BulkSubscriptionUpdateOperation {
+  id                             Int                              @id @default(autoincrement())
+  bulkOperationId                String?                          @unique
+  shopId                         String
+  updateName                     String
+  attemptType                    String                           @default("filterSelection")
+  filters                        Json?
+  actions                        Json?
+  fileUrls                       Json?
+  preparingStatus                PreparingStatus                  @default(PENDING)
+  validationStatus               ValidationStatus                 @default(PENDING)
+  verificationStatus             VerificationStatus               @default(PENDING)
+  processingStatus               ProcessingStatus                 @default(PENDING)
+  rollbackStatus                 RollbackStatus                   @default(PENDING)
+  totalSubscriptions             Int?                             @default(0)
+  totalBatches                   Int?                             @default(0)
+  successSubscriptions           Int?                             @default(0)
+  failedSubscriptions            Int?                             @default(0)
+  completedSubscriptions         Int?                             @default(0)
+  totalAttempts                  Int?                             @default(0)
+  additionalData                 Json?
+  startedAt                      DateTime                         @default(now())
+  completedAt                    DateTime?
+  BulkSubscriptionUpdateAttempts BulkSubscriptionUpdateAttempts[]
+  BulkSubscriptionUpdateBatches  BulkSubscriptionUpdateBatches[]
+  BulkSubscriptionUpdateCsvData  BulkSubscriptionUpdateCsvData[]
+  BulkSubscriptionUpdateLog      BulkSubscriptionUpdateLog[]
+  Shop                           Shop                             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id           Int            @id @default(autoincrement())
+  jobId        String
+  shopId       String
+  status       JobStatus
+  jobDate      DateTime
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime
+  BillingCycle BillingCycle[]
+  Shop         Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, jobDate])
+}
+
+model MigrationFiles {
+  id              Int                 @id @default(autoincrement())
+  migrationId     String
+  fileKey         String
+  fileName        String
+  fileType        String
+  originalFileUrl String?
+  errorFileUrl    String?
+  errorRowCount   Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime
+  status          MigrationFileStatus @default(awaiting_upload)
+  rowCount        Int                 @default(0)
+  fileSizeBytes   Int                 @default(0)
+  Migrations      Migrations          @relation(fields: [migrationId], references: [migrationId], onDelete: Cascade)
+
+  @@unique([migrationId, fileKey])
+  @@index([fileKey])
+  @@index([migrationId])
+  @@index([status])
+}
+
+model MigrationSubscriptions {
+  id                     Int                         @id @default(autoincrement())
+  migrationId            String
+  externalSubscriptionId String
+  jsonlLineNumber        Int?
+  deliveryPrice          Decimal?                    @default(0)
+  shopifyCustomerId      String
+  customerEmail          String
+  status                 String
+  currency               String
+  nextBillingDate        String
+  shopifyPaymentMethodId String
+  subscriptionType       String?
+  note                   String?
+  billingPolicy          Json
+  deliveryPolicy         Json
+  deliveryMethod         Json
+  lineItems              Json
+  customAttributes       Json?
+  billingAddress         Json?
+  paymentSource          String?
+  shopifySubscriptionId  String?
+  shopifyResponse        Json?
+  errorCode              String?
+  errorMessage           String?
+  errorDetails           Json?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime
+  migrationStatus        MigrationSubscriptionStatus @default(queued)
+  Migrations             Migrations                  @relation(fields: [migrationId], references: [migrationId], onDelete: Cascade)
+
+  @@unique([migrationId, jsonlLineNumber])
+  @@index([customerEmail])
+  @@index([externalSubscriptionId])
+  @@index([migrationId])
+  @@index([migrationStatus])
+}
+
+model Migrations {
+  id                     Int                      @id @default(autoincrement())
+  migrationId            String                   @unique
+  shopId                 String
+  platformKey            String
+  bulkOperationId        String?
+  totalRows              Int                      @default(0)
+  validRows              Int                      @default(0)
+  errorRows              Int                      @default(0)
+  createdRows            Int                      @default(0)
+  failedRows             Int                      @default(0)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime
+  rollbackCancelBulkOpId String?
+  rollbackRevokeBulkOpId String?
+  status                 MigrationStatus          @default(awaiting_upload)
+  MigrationFiles         MigrationFiles[]
+  MigrationSubscriptions MigrationSubscriptions[]
+  Shop                   Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([bulkOperationId])
+  @@index([rollbackCancelBulkOpId])
+  @@index([rollbackRevokeBulkOpId])
+  @@index([shopId])
+  @@index([status])
+}
+
+model RecoveryAttempt {
+  id                   BigInt                 @id @default(autoincrement())
+  shopId               String
+  subscriptionId       String
+  billingDate          DateTime
+  status               RecoveryStatus         @default(PENDING)
+  attemptCount         Int                    @default(0)
+  nextRetryDate        DateTime
+  billingCycleIndex    Int
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime
+  Shop                 Shop                   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  RecoveryAttemptError RecoveryAttemptError[]
+
+  @@unique([shopId, subscriptionId, billingCycleIndex])
+  @@index([status, nextRetryDate])
+}
+
+model RecoveryAttemptError {
+  id              BigInt          @id @default(autoincrement())
+  recoveryId      BigInt
+  attemptNumber   Int
+  errorCode       String?
+  errorMessage    String?
+  occurredAt      DateTime        @default(now())
+  RecoveryAttempt RecoveryAttempt @relation(fields: [recoveryId], references: [id], onDelete: Cascade)
+
+  @@index([recoveryId, attemptNumber])
+}
+
+model Session {
+  id            String    @id @db.VarChar(255)
+  shop          String    @db.VarChar(255)
+  state         String    @db.VarChar(255)
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?   @db.VarChar(255)
+  lastName      String?   @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  accountOwner  Boolean   @default(false)
+  locale        String?   @db.VarChar(10)
+  collaborator  Boolean?
+  emailVerified Boolean?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime
+
+  @@index([shop])
+  @@index([userId], map: "Session_user_idx")
+}
+
+model Shop {
+  id                              String                            @id @db.VarChar(255)
+  createdAt                       DateTime                          @default(now())
+  updatedAt                       DateTime
+  EmailStatus                     EmailStatus                       @default(ACTIVE)
+  bounceCount24h                  Int?                              @default(0)
+  complaintCount24h               Int?                              @default(0)
+  emailSuspendedReason            String?
+  mailService                     MailService                       @default(DRIFTCHARGE_SES)
+  riskScore                       Int?                              @default(0)
+  sesTenantId                     String?
+  ActivityEvent                   ActivityEvent[]
+  BillingCycle                    BillingCycle[]
+  BillingWebhookEvent             BillingWebhookEvent[]
+  BulkSubscriptionUpdateCsvData   BulkSubscriptionUpdateCsvData[]
+  BulkSubscriptionUpdateOperation BulkSubscriptionUpdateOperation[]
+  Job                             Job[]
+  Migrations                      Migrations[]
+  RecoveryAttempt                 RecoveryAttempt[]
+  ShopRecoverySettings            ShopRecoverySettings?
+  ShopifyBulkOperationTaskCodes   ShopifyBulkOperationTaskCodes[]
+  SubscriptionContract            SubscriptionContract[]
+}
+
+model ShopRecoverySettings {
+  shopId            String   @id
+  enabled           Boolean  @default(true)
+  maxAttempts       Int
+  retryIntervalDays Int
+  fallbackAction    String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime
+  Shop              Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model ShopifyBulkOperationTaskCodes {
+  id             Int       @id @default(autoincrement())
+  shopId         String
+  operationId    String
+  operationName  String?
+  taskCode       String
+  additionalData Json?
+  status         String    @default("Pending")
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  Shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model SubscriptionContract {
+  id                        BigInt                      @id @default(autoincrement())
+  shopId                    String
+  shopifyContractId         BigInt
+  adminGraphqlApiId         String
+  customerId                BigInt
+  adminGraphqlCustomerId    String?
+  originOrderId             BigInt?
+  adminGraphqlOriginOrderId String?
+  status                    ContractStatus
+  currencyCode              String                      @db.VarChar(10)
+  billingInterval           String
+  billingIntervalCount      Int
+  billingMinCycles          Int?
+  billingMaxCycles          Int?
+  deliveryInterval          String?
+  deliveryIntervalCount     Int?
+  revisionId                String?
+  rawPayload                Json?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime
+  customerEmail             String?
+  customerName              String?
+  nextBillingDate           DateTime?
+  planType                  PlanType?
+  productId                 String?
+  recordType                RecordType
+  sellingPlanId             String?
+  variantId                 String?
+  quantity                  Int?
+  price                     String?
+  BulkSubscriptionUpdateLog BulkSubscriptionUpdateLog[]
+  Shop                      Shop                        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, shopifyContractId])
+  @@index([shopId])
+  @@index([status])
+}
+
+model platform_rules {
+  id                    Int      @id @default(autoincrement())
+  platformKey           String   @unique
+  displayName           String
+  note                  String?
+  icon                  String?
+  shortDesc             String?
+  isActive              Boolean  @default(true)
+  sortOrder             Int      @default(0)
+  requiresCurrencyInput Boolean  @default(false)
+  mergeRulesType        String?
+  fileRequirements      Json
+  rulesConfig           Json
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime
+}
+
+enum BillingStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  RETRYING
+}
+
+enum BulkOperationBatchStatus {
+  PENDING
+  QUEUED
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+enum ContractStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+enum EmailStatus {
+  ACTIVE
+  THROTTLED
+  SUSPENDED
+  UNDER_REVIEW
+  DISABLED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum MailService {
+  DRIFTCHARGE_SES
+  MAILCHIMP
+  KLAVIYO
+}
+
+enum MigrationFileStatus {
+  awaiting_upload
+  uploaded
+  verifying
+  verified
+  verification_failed
+}
+
+enum MigrationStatus {
+  awaiting_upload
+  verifying
+  verification_passed
+  verification_with_errors
+  verification_failed
+  verification_error
+  committing_valid_rows
+  valid_rows_committed
+  migrating
+  migration_done
+  migration_partial
+  migration_failed
+  ready_for_activation
+  activating
+  complete
+  rollback_cancelling
+  rollback_revoking
+  rolled_back
+  rollback_partial
+  rollback_failed
+}
+
+enum MigrationSubscriptionStatus {
+  queued
+  created
+  activated
+  rolled_back
+  creation_failed
+}
+
+enum PlanType {
+  PAYPERSHIPMENT
+  PREPAID
+}
+
+enum PreparingStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+enum ProcessingStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+enum RecordType {
+  MIGRATED
+  NONMIGRATED
+}
+
+enum RecoveryStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum RollbackStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+enum ValidationStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}
+
+enum VerificationStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+}

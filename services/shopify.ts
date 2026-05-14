@@ -1,12 +1,28 @@
-import { logger } from "../logger.mjs";
-import { GET_BULK_OPERATION_QUERY } from "../graphql/queries.mjs";
+import { logger } from "../logger.ts";
+import { GET_BULK_OPERATION_QUERY } from "../graphql/queries.ts";
+import type {
+  BulkOperationNode,
+  CancelEligibleRow,
+  CancelResults,
+  CancelUpdate,
+  CreateResultItem,
+  CreateResults,
+  JSONLLine,
+  RevokeResults,
+  RevokeUpdate,
+} from "../types/index.ts";
 
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || "2026-01";
 
 // ────────────────────────────────────────────────────────────────
 // Shopify GraphQL — generic
 // ────────────────────────────────────────────────────────────────
-export async function shopifyGraphQL(shopDomain, accessToken, query, variables = {}) {
+export async function shopifyGraphQL<T = unknown>(
+  shopDomain: string,
+  accessToken: string,
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<T> {
   const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
   const response = await fetch(url, {
@@ -22,7 +38,7 @@ export async function shopifyGraphQL(shopDomain, accessToken, query, variables =
     throw new Error(`Shopify API HTTP error: ${response.status} ${response.statusText}`);
   }
 
-  const json = await response.json();
+  const json = (await response.json()) as { data: T; errors?: unknown };
 
   if (json.errors) {
     throw new Error(`Shopify GraphQL errors: ${JSON.stringify(json.errors)}`);
@@ -31,9 +47,13 @@ export async function shopifyGraphQL(shopDomain, accessToken, query, variables =
   return json.data;
 }
 
-export async function fetchBulkOperationDetails(shopDomain, accessToken, bulkOperationGid) {
+export async function fetchBulkOperationDetails(
+  shopDomain: string,
+  accessToken: string,
+  bulkOperationGid: string,
+): Promise<BulkOperationNode | null> {
   try {
-    const data = await shopifyGraphQL(
+    const data = await shopifyGraphQL<{ node: BulkOperationNode | null }>(
       shopDomain,
       accessToken,
       GET_BULK_OPERATION_QUERY,
@@ -49,7 +69,7 @@ export async function fetchBulkOperationDetails(shopDomain, accessToken, bulkOpe
 // ────────────────────────────────────────────────────────────────
 // JSONL download + parse
 // ────────────────────────────────────────────────────────────────
-export async function downloadAndParseJSONL(url) {
+export async function downloadAndParseJSONL(url: string): Promise<JSONLLine[]> {
   if (!url) {
     logger.warn("downloadAndParseJSONL", { message: "No URL provided" });
     return [];
@@ -63,7 +83,7 @@ export async function downloadAndParseJSONL(url) {
 
   const text   = await response.text();
   const lines  = text.trim().split("\n").filter(Boolean);
-  const parsed = [];
+  const parsed: JSONLLine[] = [];
 
   for (const line of lines) {
     try {
@@ -79,9 +99,9 @@ export async function downloadAndParseJSONL(url) {
 // ────────────────────────────────────────────────────────────────
 // CREATE phase — process subscriptionContractAtomicCreate JSONL
 // ────────────────────────────────────────────────────────────────
-export function processJSONLResults(lines) {
-  const successes = [];
-  const failures  = [];
+export function processJSONLResults(lines: JSONLLine[]): CreateResults {
+  const successes: CreateResultItem[] = [];
+  const failures:  CreateResultItem[] = [];
 
   for (const line of lines) {
     const result = line?.data?.subscriptionContractAtomicCreate;
@@ -94,7 +114,7 @@ export function processJSONLResults(lines) {
     const { contract, userErrors } = result;
     const lineNumber = line.__lineNumber;
 
-    if (userErrors?.length > 0) {
+    if (userErrors && userErrors.length > 0) {
       const errorMessage = userErrors.map((e) => e.message).join(", ");
       failures.push({
         lineNumber,
@@ -135,8 +155,12 @@ export function processJSONLResults(lines) {
 // successAfterStatus: "rollback_cancelled" (other_platform — revoke pending)
 //                     OR "deleted" (other platforms — final)
 // ────────────────────────────────────────────────────────────────
-export function processCancelJSONLResults(lines, eligible, successAfterStatus) {
-  const updates = [];
+export function processCancelJSONLResults(
+  lines: JSONLLine[],
+  eligible: CancelEligibleRow[],
+  successAfterStatus: string,
+): CancelResults {
+  const updates: CancelUpdate[] = [];
 
   for (const line of lines) {
     const result     = line?.data?.subscriptionContractCancel;
@@ -170,7 +194,7 @@ export function processCancelJSONLResults(lines, eligible, successAfterStatus) {
       const errorMessage = userErrors?.[0]?.message || "Cancel failed (unknown error)";
       updates.push({
         lineNumber,
-        migrationStatus: "failed",
+        migrationStatus: "creation_failed",
         errorCode:       "ROLLBACK_CANCEL_FAILED",
         errorMessage,
         errorDetails:    { userErrors: userErrors || [], contractId: sub.shopifySubscriptionId },
@@ -196,8 +220,11 @@ export function processCancelJSONLResults(lines, eligible, successAfterStatus) {
 // successStatus: "deleted" — paymentId revoke ok → all sharing subs become deleted
 // failureStatus: null      — keep migrationStatus = "rollback_cancelled" (COALESCE in DB)
 // ────────────────────────────────────────────────────────────────
-export function processRevokeJSONLResults(lines, paymentIds) {
-  const updates = [];
+export function processRevokeJSONLResults(
+  lines: JSONLLine[],
+  paymentIds: string[],
+): RevokeResults {
+  const updates: RevokeUpdate[] = [];
 
   for (const line of lines) {
     const result     = line?.data?.customerPaymentMethodRevoke;

@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/aws-serverless";
 
-export const initSentry = () => {
+export const initSentry = (): void => {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV,
@@ -27,7 +27,7 @@ export const initSentry = () => {
  * Capture a thrown Error object with context
  * @param {Error} error
  */
-export const sendSentryError = async (error) => {
+export const sendSentryError = async (error: unknown): Promise<void> => {
   Sentry.withScope((scope) => {
     scope.setTag("function_name", process.env.AWS_LAMBDA_FUNCTION_NAME);
     scope.setTag("aws_region", process.env.AWS_REGION);
